@@ -422,7 +422,8 @@ def draw_solution_lines(c, x, y, width, height, line_gap=8):
         current -= line_gap
 
 
-def draw_problem_slot(c, img_path, display_no, x, y, w, h, solution_ratio=0.55):
+def draw_problem_slot_with_lines(c, img_path, display_no, x, y, w, h, solution_ratio=0.55):
+    """기존 숙제장형: 문제 + 풀이줄."""
     c.setFont(PDF_FONT, 10)
     c.drawString(x, y + h - 12, f"[{display_no}]")
 
@@ -430,8 +431,6 @@ def draw_problem_slot(c, img_path, display_no, x, y, w, h, solution_ratio=0.55):
     iw, ih = img.size
 
     img_area_h = h * (1 - solution_ratio) - 16
-    sol_area_h = h * solution_ratio - 20
-
     max_img_w = w
     max_img_h = max(30, img_area_h)
 
@@ -443,7 +442,6 @@ def draw_problem_slot(c, img_path, display_no, x, y, w, h, solution_ratio=0.55):
     img_y = y + h - 24 - draw_h
     c.drawImage(img_path, img_x, img_y, width=draw_w, height=draw_h, preserveAspectRatio=True, anchor="nw")
 
-    # 풀이 공간
     sol_top = img_y - 12
     c.setFont(PDF_FONT, 8)
     c.drawString(x, sol_top, "풀이")
@@ -453,12 +451,106 @@ def draw_problem_slot(c, img_path, display_no, x, y, w, h, solution_ratio=0.55):
     c.drawString(x, y + 5, "□ 혼자 풂   □ 해설 봄   □ 틀림   □ 다시 풀기")
 
 
-def make_homework_pdf(problem_items, output_name, start_index=1, count=10, per_page=2, title="수학 숙제장"):
+def draw_exam_problem(c, img_path, display_no, x, y_top, w, max_h, show_problem_id=False):
+    """
+    시험지형: 풀이줄 없이, 위쪽에 문제 이미지만 배치.
+    y_top은 슬롯의 위쪽 좌표.
+    """
+    img = Image.open(img_path)
+    iw, ih = img.size
+
+    # 문제 이미지를 칸 너비에 맞추되, 칸 높이를 넘지 않게 함.
+    scale = min(w / iw, max_h / ih)
+    draw_w = iw * scale
+    draw_h = ih * scale
+
+    img_x = x
+    img_y = y_top - draw_h
+
+    if show_problem_id:
+        c.setFont(PDF_FONT, 8)
+        c.drawString(x, y_top + 3, f"[{display_no}]")
+
+    c.drawImage(img_path, img_x, img_y, width=draw_w, height=draw_h, preserveAspectRatio=True, anchor="nw")
+
+
+def make_homework_pdf(
+    problem_items,
+    output_name,
+    start_index=1,
+    count=10,
+    per_page=2,
+    title="수학 숙제장",
+    output_layout="시험지형: 좌우 2단, 풀이줄 없음",
+    show_header=False,
+    show_problem_id=False,
+):
     selected = problem_items[start_index - 1: start_index - 1 + count]
     output_path = EXPORTS_DIR / output_name
 
     c = canvas.Canvas(str(output_path), pagesize=A4)
     page_w, page_h = A4
+
+    if output_layout == "시험지형: 좌우 2단, 풀이줄 없음":
+        # 사용자가 원한 형태:
+        # A4 한 장을 세로로 반 갈라서, 각 칸의 위쪽에 문제 이미지만 배치.
+        # 풀이줄 없음. 큰 빈 공간은 그대로 둠.
+        margin_x = 12 * mm
+        margin_top = 16 * mm
+        margin_bottom = 12 * mm
+        center_x = page_w / 2
+
+        # 중앙 구분선
+        line_top = page_h - margin_top
+        line_bottom = margin_bottom
+
+        # 좌/우 칸
+        left_x = margin_x
+        left_w = center_x - margin_x - 4 * mm
+        right_x = center_x + 4 * mm
+        right_w = page_w - right_x - margin_x
+
+        # 문제를 페이지 위쪽에 붙이는 정도. 너무 길면 칸 전체 높이 안에서 축소.
+        max_problem_h = page_h - margin_top - margin_bottom
+
+        # 무조건 한 장에 2문제씩
+        for page_start in range(0, len(selected), 2):
+            if show_header:
+                c.setFont(PDF_FONT, 12)
+                c.drawCentredString(page_w / 2, page_h - 9 * mm, title)
+
+            c.line(center_x, line_bottom, center_x, line_top)
+
+            page_items = selected[page_start: page_start + 2]
+            if len(page_items) >= 1:
+                draw_exam_problem(
+                    c,
+                    page_items[0]["path"],
+                    start_index + page_start,
+                    left_x,
+                    line_top,
+                    left_w,
+                    max_problem_h,
+                    show_problem_id=show_problem_id,
+                )
+            if len(page_items) >= 2:
+                draw_exam_problem(
+                    c,
+                    page_items[1]["path"],
+                    start_index + page_start + 1,
+                    right_x,
+                    line_top,
+                    right_w,
+                    max_problem_h,
+                    show_problem_id=show_problem_id,
+                )
+
+            c.showPage()
+
+        c.save()
+        return str(output_path)
+
+    # 기존 숙제장형: 풀이줄 포함
     margin = 14 * mm
     header_h = 15 * mm
 
@@ -484,10 +576,9 @@ def make_homework_pdf(problem_items, output_name, start_index=1, count=10, per_p
             r = idx // cols
             col = idx % cols
             x = margin + col * (slot_w + 8 * mm)
-            # 위에서 아래로 배치
             y = margin + (rows - 1 - r) * (slot_h + 8 * mm)
             display_no = start_index + page_start + idx
-            draw_problem_slot(c, item["path"], display_no, x, y, slot_w, slot_h)
+            draw_problem_slot_with_lines(c, item["path"], display_no, x, y, slot_w, slot_h)
 
         c.showPage()
 
@@ -550,7 +641,25 @@ with st.sidebar:
     st.header("4. 출력 설정")
     start_index = st.number_input("출력 시작 문제 번호", min_value=1, value=1, step=1)
     output_count = st.number_input("이번 숙제에 넣을 문제 수", min_value=1, value=10, step=1)
-    per_page = st.selectbox("A4 한 장에 넣을 문제 수", [2, 4], index=0)
+
+    output_layout = st.selectbox(
+        "출력 양식",
+        [
+            "시험지형: 좌우 2단, 풀이줄 없음",
+            "숙제장형: 문제 + 풀이줄",
+        ],
+        index=0,
+    )
+
+    if output_layout == "시험지형: 좌우 2단, 풀이줄 없음":
+        per_page = 2
+        show_header = st.checkbox("상단 제목 표시", value=False)
+        show_problem_id = st.checkbox("문제 번호 표시", value=False)
+    else:
+        per_page = st.selectbox("A4 한 장에 넣을 문제 수", [2, 4], index=0)
+        show_header = True
+        show_problem_id = True
+
     output_title = st.text_input("숙제장 제목", value="수학 숙제장")
 
 
@@ -566,6 +675,9 @@ with col_help:
 - **세로 4문제**: 한 페이지에 세로로 4문제.
 - **문제번호 기준**: 모의고사처럼 문제번호가 텍스트로 잡히는 PDF.
 - **페이지 전체**: 한 페이지를 통째로 한 문제 카드처럼 저장.
+
+출력 양식은 기본값인 **시험지형: 좌우 2단, 풀이줄 없음**을 쓰면 됩니다.
+이 양식은 A4를 세로로 반 갈라서 위쪽에 문제만 놓고, 아래는 빈 공간으로 둡니다.
 
 처음에는 1페이지만 테스트해서 잘리는 모양을 보고, 그다음 전체 범위로 넓히세요.
 
@@ -653,6 +765,9 @@ with col_main:
                         count=actual_count,
                         per_page=per_page,
                         title=output_title,
+                        output_layout=output_layout,
+                        show_header=show_header,
+                        show_problem_id=show_problem_id,
                     )
 
                 with open(out_path, "rb") as f:
