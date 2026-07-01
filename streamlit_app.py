@@ -491,7 +491,37 @@ def make_homework_pdf(
     c = canvas.Canvas(str(output_path), pagesize=A4)
     page_w, page_h = A4
 
-    if output_layout == "시험지형: 좌우 2단, 풀이줄 없음":
+    if output_layout == "큰 문제형: A4 한 장에 1문제, 풀이줄 없음":
+        # 페이지 하나짜리 큰 문제용:
+        # A4 한 장에 문제 이미지를 크게 하나만 배치하고, 풀이줄은 만들지 않음.
+        margin_x = 16 * mm
+        margin_top = 16 * mm
+        margin_bottom = 16 * mm
+        max_w = page_w - 2 * margin_x
+        max_h = page_h - margin_top - margin_bottom
+        y_top = page_h - margin_top
+
+        for page_start in range(0, len(selected), 1):
+            if show_header:
+                c.setFont(PDF_FONT, 12)
+                c.drawCentredString(page_w / 2, page_h - 9 * mm, title)
+
+            draw_exam_problem(
+                c,
+                selected[page_start]["path"],
+                start_index + page_start,
+                margin_x,
+                y_top,
+                max_w,
+                max_h,
+                show_problem_id=show_problem_id,
+            )
+            c.showPage()
+
+        c.save()
+        return str(output_path)
+
+    if output_layout == "고정 양식: A4 좌우 2단, 풀이줄 없음":
         # 사용자가 원한 형태:
         # A4 한 장을 세로로 반 갈라서, 각 칸의 위쪽에 문제 이미지만 배치.
         # 풀이줄 없음. 큰 빈 공간은 그대로 둠.
@@ -590,7 +620,7 @@ def make_homework_pdf(
 # UI
 # -----------------------------
 st.title("수학 숙제장 생성기")
-st.caption("먼저 자동 추천으로 문제를 뽑고, 이상한 구간만 보정해서 A4 숙제장으로 다시 배치합니다.")
+st.caption("문제 크기와 상관없이 최종 출력은 기본적으로 A4 좌우 2단 양식으로 고정합니다.")
 
 with st.sidebar:
     st.header("1. PDF 범위")
@@ -645,16 +675,17 @@ with st.sidebar:
     output_layout = st.selectbox(
         "출력 양식",
         [
-            "시험지형: 좌우 2단, 풀이줄 없음",
+            "고정 양식: A4 좌우 2단, 풀이줄 없음",
             "숙제장형: 문제 + 풀이줄",
         ],
         index=0,
     )
 
-    if output_layout == "시험지형: 좌우 2단, 풀이줄 없음":
+    if output_layout == "고정 양식: A4 좌우 2단, 풀이줄 없음":
         per_page = 2
         show_header = st.checkbox("상단 제목 표시", value=False)
         show_problem_id = st.checkbox("문제 번호 표시", value=False)
+        st.caption("문제가 큰 경우에도 이 양식은 유지됩니다. A4를 세로로 반 갈라 왼쪽/오른쪽에 1문제씩 넣습니다.")
     else:
         per_page = st.selectbox("A4 한 장에 넣을 문제 수", [2, 4], index=0)
         show_header = True
@@ -676,8 +707,14 @@ with col_help:
 - **문제번호 기준**: 모의고사처럼 문제번호가 텍스트로 잡히는 PDF.
 - **페이지 전체**: 한 페이지를 통째로 한 문제 카드처럼 저장.
 
-출력 양식은 기본값인 **시험지형: 좌우 2단, 풀이줄 없음**을 쓰면 됩니다.
-이 양식은 A4를 세로로 반 갈라서 위쪽에 문제만 놓고, 아래는 빈 공간으로 둡니다.
+출력 양식은 기본값인 **고정 양식: A4 좌우 2단, 풀이줄 없음**을 쓰면 됩니다.
+이 양식은 문제 크기와 상관없이 A4를 세로로 반 갈라서 왼쪽/오른쪽에 1문제씩 넣습니다.
+큰 문제는 작아질 수 있지만, 양식은 유지됩니다.
+
+지금 올린 예시처럼 한 페이지에 큰 문제 하나가 있는 경우에는:
+- 추출 방식: **페이지 전체를 한 문제로**
+- 출력 양식: **고정 양식: A4 좌우 2단, 풀이줄 없음**
+으로 두면 됩니다.
 
 처음에는 1페이지만 테스트해서 잘리는 모양을 보고, 그다음 전체 범위로 넓히세요.
 
